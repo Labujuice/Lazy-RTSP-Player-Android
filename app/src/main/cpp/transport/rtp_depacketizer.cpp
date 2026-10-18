@@ -13,6 +13,9 @@ RtpDepacketizer::RtpDepacketizer(VideoCodecType codec) : m_codec(codec) {
 void RtpDepacketizer::reset() {
     m_assemblyBuffer.clear();
     m_isAssembling = false;
+    m_auBuffer.clear();
+    m_auHasData = false;
+    m_auIsKeyFrame = false;
     m_hasLastSeq = false;
     m_lastSeq = 0;
     m_receivedPackets = 0;
@@ -98,19 +101,43 @@ bool RtpDepacketizer::processRtpPacket(const uint8_t* packet, size_t size) {
     return true;
 }
 
-void RtpDepacketizer::processH264(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool /*marker*/) {
+void RtpDepacketizer::appendNaluToAu(const uint8_t* nalu, size_t size, uint32_t timestamp, bool isKey, bool marker) {
+    if (!nalu || size == 0) return;
+
+    // If timestamp changed, flush the previous Access Unit first
+    if (m_auHasData && timestamp != m_auTimestamp) {
+        flushCurrentAu();
+    }
+
+    m_auBuffer.insert(m_auBuffer.end(), START_CODE, START_CODE + 4);
+    m_auBuffer.insert(m_auBuffer.end(), nalu, nalu + size);
+    m_auTimestamp = timestamp;
+    m_auHasData = true;
+    if (isKey) {
+        m_auIsKeyFrame = true;
+    }
+
+    if (marker) {
+        flushCurrentAu();
+    }
+}
+
+void RtpDepacketizer::flushCurrentAu() {
+    if (m_auHasData && m_naluCallback) {
+        m_naluCallback(m_auBuffer.data(), m_auBuffer.size(), m_auTimestamp, m_auIsKeyFrame);
+    }
+    m_auBuffer.clear();
+    m_auHasData = false;
+    m_auIsKeyFrame = false;
+}
+
+void RtpDepacketizer::processH264(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool marker) {
     uint8_t nalType = payload[0] & 0x1F;
 
     if (nalType >= 1 && nalType <= 23) {
         // Single NAL unit packet
         bool isKey = (nalType == 5 || nalType == 7 || nalType == 8);
-        m_assemblyBuffer.clear();
-        m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
-        m_assemblyBuffer.insert(m_assemblyBuffer.end(), payload, payload + payloadSize);
-
-        if (m_naluCallback) {
-            m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), timestamp, isKey);
-        }
+        appendNaluToAu(payload, payloadSize, timestamp, isKey, marker);
     } else if (nalType == 28) {
         // FU-A fragmentation
         if (payloadSize < 2) return;
@@ -125,7 +152,6 @@ void RtpDepacketizer::processH264(const uint8_t* payload, size_t payloadSize, ui
             m_isAssembling = true;
             m_currentTimestamp = timestamp;
             m_assemblyBuffer.clear();
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
             uint8_t reconstructedHeader = (fuIndicator & 0xE0) | innerType;
             m_assemblyBuffer.push_back(reconstructedHeader);
             m_assemblyBuffer.insert(m_assemblyBuffer.end(), payload + 2, payload + payloadSize);
@@ -135,9 +161,7 @@ void RtpDepacketizer::processH264(const uint8_t* payload, size_t payloadSize, ui
 
         if (endBit && m_isAssembling) {
             m_isAssembling = false;
-            if (m_naluCallback) {
-                m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), m_currentTimestamp, isKey);
-            }
+            appendNaluToAu(m_assemblyBuffer.data(), m_assemblyBuffer.size(), m_currentTimestamp, isKey, marker);
         }
     } else if (nalType == 24) {
         // STAP-A aggregation packet
@@ -149,33 +173,22 @@ void RtpDepacketizer::processH264(const uint8_t* payload, size_t payloadSize, ui
 
             uint8_t subType = payload[offset] & 0x1F;
             bool isKey = (subType == 5 || subType == 7 || subType == 8);
+            bool isLastInPacket = (offset + naluSize == payloadSize);
 
-            m_assemblyBuffer.clear();
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), payload + offset, payload + offset + naluSize);
-
-            if (m_naluCallback) {
-                m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), timestamp, isKey);
-            }
+            appendNaluToAu(payload + offset, naluSize, timestamp, isKey, isLastInPacket && marker);
             offset += naluSize;
         }
     }
 }
 
-void RtpDepacketizer::processH265(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool /*marker*/) {
+void RtpDepacketizer::processH265(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool marker) {
     if (payloadSize < 2) return;
     uint8_t nalType = (payload[0] >> 1) & 0x3F;
 
     if (nalType <= 47) {
         // Single NAL unit packet
         bool isKey = (nalType >= 16 && nalType <= 21) || (nalType >= 32 && nalType <= 34);
-        m_assemblyBuffer.clear();
-        m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
-        m_assemblyBuffer.insert(m_assemblyBuffer.end(), payload, payload + payloadSize);
-
-        if (m_naluCallback) {
-            m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), timestamp, isKey);
-        }
+        appendNaluToAu(payload, payloadSize, timestamp, isKey, marker);
     } else if (nalType == 49) {
         // Fragmentation Unit (FU)
         if (payloadSize < 3) return;
@@ -189,7 +202,6 @@ void RtpDepacketizer::processH265(const uint8_t* payload, size_t payloadSize, ui
             m_isAssembling = true;
             m_currentTimestamp = timestamp;
             m_assemblyBuffer.clear();
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
 
             // Reconstruct 2-byte NAL header
             uint8_t byte0 = (payload[0] & 0x81) | ((innerType & 0x3F) << 1);
@@ -203,9 +215,7 @@ void RtpDepacketizer::processH265(const uint8_t* payload, size_t payloadSize, ui
 
         if (endBit && m_isAssembling) {
             m_isAssembling = false;
-            if (m_naluCallback) {
-                m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), m_currentTimestamp, isKey);
-            }
+            appendNaluToAu(m_assemblyBuffer.data(), m_assemblyBuffer.size(), m_currentTimestamp, isKey, marker);
         }
     } else if (nalType == 48) {
         // AP (Aggregation Packet)
@@ -217,14 +227,9 @@ void RtpDepacketizer::processH265(const uint8_t* payload, size_t payloadSize, ui
 
             uint8_t subType = (payload[offset] >> 1) & 0x3F;
             bool isKey = (subType >= 16 && subType <= 21) || (subType >= 32 && subType <= 34);
+            bool isLastInPacket = (offset + naluSize == payloadSize);
 
-            m_assemblyBuffer.clear();
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), START_CODE, START_CODE + 4);
-            m_assemblyBuffer.insert(m_assemblyBuffer.end(), payload + offset, payload + offset + naluSize);
-
-            if (m_naluCallback) {
-                m_naluCallback(m_assemblyBuffer.data(), m_assemblyBuffer.size(), timestamp, isKey);
-            }
+            appendNaluToAu(payload + offset, naluSize, timestamp, isKey, isLastInPacket && marker);
             offset += naluSize;
         }
     }

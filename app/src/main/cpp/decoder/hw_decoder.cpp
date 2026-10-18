@@ -116,12 +116,16 @@ bool HwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool /*
     return false;
 }
 
-void HwDecoder::drainOutput(bool render) {
-    if (!m_codec || !m_isConfigured) return;
+int HwDecoder::drainOutput(bool render) {
+    if (!m_codec || !m_isConfigured) return 0;
 
     AMediaCodecBufferInfo info;
+    int tryCount = 0;
+    int rendered = 0;
     while (true) {
-        ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(m_codec, &info, 0);
+        int timeoutUs = (tryCount == 0) ? 2000 : 0;
+        ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(m_codec, &info, timeoutUs);
+        tryCount++;
         if (outIdx >= 0) {
             auto now = std::chrono::steady_clock::now();
             double decodeMs = std::chrono::duration<double, std::milli>(now - m_lastInputTime).count();
@@ -134,8 +138,14 @@ void HwDecoder::drainOutput(bool render) {
             }
 
             // Zero-copy render directly to ANativeWindow
-            AMediaCodec_releaseOutputBuffer(m_codec, outIdx, render);
+            media_status_t status = AMediaCodec_releaseOutputBuffer(m_codec, outIdx, render);
+            if (status != AMEDIA_OK) {
+                LOGW("AMediaCodec_releaseOutputBuffer failed with status: %d", status);
+            }
             m_renderedFrames++;
+            if (render) {
+                rendered++;
+            }
         } else if (outIdx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
             AMediaFormat* newFormat = AMediaCodec_getOutputFormat(m_codec);
             LOGI("AMediaCodec output format changed: %s", AMediaFormat_toString(newFormat));
@@ -147,12 +157,16 @@ void HwDecoder::drainOutput(bool render) {
             break;
         }
     }
+    return rendered;
 }
 
 void HwDecoder::flush() {
     if (m_codec && m_isConfigured) {
         LOGI("Flushing AMediaCodec hardware decoder");
-        AMediaCodec_flush(m_codec);
+        media_status_t status = AMediaCodec_flush(m_codec);
+        if (status != AMEDIA_OK) {
+            LOGW("AMediaCodec_flush returned: %d", status);
+        }
     }
 }
 

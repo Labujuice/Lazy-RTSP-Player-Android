@@ -8,6 +8,8 @@
 #include <atomic>
 #include "logger.h"
 
+#include <chrono>
+
 namespace player {
 
 struct PacketBuffer {
@@ -18,12 +20,14 @@ struct PacketBuffer {
     uint16_t sequenceNumber = 0;
     bool isKeyFrame = false;
     int poolIndex = -1;
+    std::chrono::steady_clock::time_point enqueueTime;
 
     void reset() {
         size = 0;
         timestamp = 0;
         sequenceNumber = 0;
         isKeyFrame = false;
+        enqueueTime = std::chrono::steady_clock::now();
     }
 };
 

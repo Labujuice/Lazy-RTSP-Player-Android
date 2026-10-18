@@ -115,12 +115,16 @@ bool SwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool /*
     return false;
 }
 
-void SwDecoder::drainOutput(bool render) {
-    if (!m_codec || !m_isConfigured) return;
+int SwDecoder::drainOutput(bool render) {
+    if (!m_codec || !m_isConfigured) return 0;
 
     AMediaCodecBufferInfo info;
+    int tryCount = 0;
+    int rendered = 0;
     while (true) {
-        ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(m_codec, &info, 0);
+        int timeoutUs = (tryCount == 0) ? 2000 : 0;
+        ssize_t outIdx = AMediaCodec_dequeueOutputBuffer(m_codec, &info, timeoutUs);
+        tryCount++;
         if (outIdx >= 0) {
             auto now = std::chrono::steady_clock::now();
             double decodeMs = std::chrono::duration<double, std::milli>(now - m_lastInputTime).count();
@@ -133,6 +137,9 @@ void SwDecoder::drainOutput(bool render) {
 
             AMediaCodec_releaseOutputBuffer(m_codec, outIdx, render);
             m_renderedFrames++;
+            if (render) {
+                rendered++;
+            }
         } else if (outIdx == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
             AMediaFormat* newFormat = AMediaCodec_getOutputFormat(m_codec);
             LOGI("SwDecoder format changed: %s", AMediaFormat_toString(newFormat));
@@ -141,6 +148,7 @@ void SwDecoder::drainOutput(bool render) {
             break;
         }
     }
+    return rendered;
 }
 
 void SwDecoder::flush() {

@@ -27,12 +27,25 @@ PlayerEngine::PlayerEngine() {
 
 PlayerEngine::~PlayerEngine() {
     stop();
+    if (m_window) {
+        ANativeWindow_release(m_window);
+        m_window = nullptr;
+    }
 }
 
 void PlayerEngine::setNativeWindow(ANativeWindow* window) {
     std::lock_guard<std::mutex> lock(m_queueMutex);
+    if (m_window && m_window != window) {
+        ANativeWindow_release(m_window);
+    }
     m_window = window;
     LOGI("PlayerEngine: NativeWindow set: %p", window);
+
+    if (m_decoder && m_prober->isProbed() && m_window) {
+        const StreamInfo& info = m_prober->getStreamInfo();
+        LOGI("Re-initializing decoder with updated ANativeWindow");
+        m_decoder->init(info.mimeType, m_frameWidth, m_frameHeight, info.sps, info.pps, info.vps, m_window);
+    }
 }
 
 void PlayerEngine::setStateCallback(StateChangeCallback callback) {
@@ -178,26 +191,7 @@ void PlayerEngine::onNaluReceived(const uint8_t* data, size_t size, uint32_t tim
         m_mp4Muxer->writeSample(data, size, ptsUs, isKeyFrame);
     }
 
-    // 3. Drop-to-IDR Latency Reduction check (Jitter backlog > 60ms)
-    // Approximately 2~4 frames at 30-60fps
-    {
-        std::lock_guard<std::mutex> lock(m_queueMutex);
-        if (m_decodeQueue.size() >= 3) { // Backlog exceeded ~60ms
-            LOGW("Jitter buffer backlog exceeded 60ms (%zu frames)! Triggering Drop-to-IDR purge.",
-                 m_decodeQueue.size());
-            m_telemetry.recordJitterDrop();
-            while (!m_decodeQueue.empty()) {
-                m_bufferPool->release(m_decodeQueue.front());
-                m_decodeQueue.pop();
-            }
-            if (m_decoder) {
-                m_decoder->flush();
-            }
-            m_waitingForIdr.store(true);
-        }
-    }
-
-    // If waiting for IDR, drop all non-keyframe packets
+    // 3. Drop non-keyframes when waiting for IDR
     if (m_waitingForIdr.load()) {
         if (!isKeyFrame) {
             return; // Drop P/B frame
@@ -218,6 +212,7 @@ void PlayerEngine::onNaluReceived(const uint8_t* data, size_t size, uint32_t tim
         buf->size = size;
         buf->timestamp = timestamp;
         buf->isKeyFrame = isKeyFrame;
+        buf->enqueueTime = std::chrono::steady_clock::now();
 
         std::lock_guard<std::mutex> lock(m_queueMutex);
         m_decodeQueue.push(buf);
@@ -292,12 +287,63 @@ void PlayerEngine::decodeLoop() {
         }
 
         if (buf) {
+            auto now = std::chrono::steady_clock::now();
+            double waitMs = std::chrono::duration<double, std::milli>(now - buf->enqueueTime).count();
+
+            size_t currentQueueSize = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_queueMutex);
+                currentQueueSize = m_decodeQueue.size();
+            }
+
+            // Multi-frame latency backlog > 60ms (at least 3 frames) or severe queue accumulation > 15 frames
+            if ((currentQueueSize >= 3 && waitMs > 60.0) || currentQueueSize > 15) {
+                LOGW("Queue backlog exceeded 60ms (wait=%.1f ms, size=%zu)! Running Drop-to-IDR catchup.",
+                     waitMs, currentQueueSize);
+                m_telemetry.recordJitterDrop();
+
+                // Safely inspect remaining queue on this decode thread for any IDR keyframe
+                PacketBuffer* newestIdr = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(m_queueMutex);
+                    while (!m_decodeQueue.empty()) {
+                        PacketBuffer* qb = m_decodeQueue.front();
+                        m_decodeQueue.pop();
+                        if (qb->isKeyFrame) {
+                            if (newestIdr) m_bufferPool->release(newestIdr);
+                            newestIdr = qb;
+                        } else {
+                            m_bufferPool->release(qb);
+                        }
+                    }
+                }
+
+                if (m_decoder) {
+                    m_decoder->flush();
+                }
+
+                if (newestIdr) {
+                    LOGI("Drop-to-IDR: Jumped directly to newest IDR keyframe in backlog queue!");
+                    m_waitingForIdr.store(false);
+                    m_bufferPool->release(buf);
+                    buf = newestIdr;
+                    // Proceed to decode newestIdr below
+                } else {
+                    LOGW("Drop-to-IDR: No IDR keyframe in backlog, waiting for next IDR.");
+                    m_waitingForIdr.store(true);
+                    m_bufferPool->release(buf);
+                    continue;
+                }
+            }
+
             if (m_decoder && m_prober->isProbed()) {
                 uint64_t ptsUs = static_cast<uint64_t>(buf->timestamp) * 1000 / 90;
                 bool success = m_decoder->decode(buf->data, buf->size, ptsUs, buf->isKeyFrame);
                 if (success) {
-                    m_decoder->drainOutput(/*render=*/true);
-                    m_telemetry.recordRenderFrame();
+                    int rendered = m_decoder->drainOutput(/*render=*/true);
+                    for (int r = 0; r < rendered; ++r) {
+                        m_telemetry.recordRenderFrame();
+                    }
                     m_telemetry.setDecodeTimeMs(m_decoder->getLastDecodeTimeMs());
                 }
 
@@ -317,7 +363,10 @@ void PlayerEngine::decodeLoop() {
             m_bufferPool->release(buf);
         } else if (m_decoder) {
             // Drain remaining decoded frames
-            m_decoder->drainOutput(true);
+            int rendered = m_decoder->drainOutput(true);
+            for (int r = 0; r < rendered; ++r) {
+                m_telemetry.recordRenderFrame();
+            }
         }
     }
 

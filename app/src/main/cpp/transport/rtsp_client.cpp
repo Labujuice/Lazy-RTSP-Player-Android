@@ -94,6 +94,40 @@ std::string RtspClient::receiveResponse(int timeoutMs) {
     return resp;
 }
 
+static std::vector<uint8_t> base64Decode(const std::string& input) {
+    static const int b64Table[256] = {
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+        52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+        15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+        -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+        41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+    };
+    std::vector<uint8_t> out;
+    int val = 0, valb = -8;
+    for (uint8_t c : input) {
+        if (c == '=') break;
+        if (b64Table[c] == -1) continue;
+        val = (val << 6) + b64Table[c];
+        valb += 6;
+        if (valb >= 0) {
+            out.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
 bool RtspClient::parseSdp(const std::string& sdp) {
     // Check video codec
     std::string lowerSdp = sdp;
@@ -105,6 +139,48 @@ bool RtspClient::parseSdp(const std::string& sdp) {
     } else {
         m_depacketizer.setCodecType(VideoCodecType::H264);
         LOGI("SDP parsed: Detected H.264 stream");
+    }
+
+    // Extract H.264 sprop-parameter-sets (SPS and PPS) from SDP
+    size_t spropPos = sdp.find("sprop-parameter-sets=");
+    if (spropPos != std::string::npos) {
+        size_t endLine = sdp.find_first_of(";\r\n", spropPos);
+        std::string paramSets = sdp.substr(spropPos + 21, endLine - (spropPos + 21));
+        std::stringstream ss(paramSets);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            while (!token.empty() && (token.front() == ' ' || token.front() == '\t')) token.erase(0, 1);
+            while (!token.empty() && (token.back() == ' ' || token.back() == '\t')) token.pop_back();
+            if (!token.empty()) {
+                std::vector<uint8_t> bin = base64Decode(token);
+                if (!bin.empty() && m_naluCallback) {
+                    std::vector<uint8_t> nalu = {0x00, 0x00, 0x00, 0x01};
+                    nalu.insert(nalu.end(), bin.begin(), bin.end());
+                    LOGI("Emitting SDP sprop-parameter-set NALU (type=%d, size=%zu)",
+                         bin[0] & 0x1F, nalu.size());
+                    m_naluCallback(nalu.data(), nalu.size(), 0, true);
+                }
+            }
+        }
+    }
+
+    // Extract H.265 parameter sets from SDP
+    const char* hevcKeys[] = {"sprop-vps=", "sprop-sps=", "sprop-pps=", nullptr};
+    for (int k = 0; hevcKeys[k] != nullptr; ++k) {
+        size_t pos = sdp.find(hevcKeys[k]);
+        if (pos != std::string::npos) {
+            size_t keyLen = strlen(hevcKeys[k]);
+            size_t endLine = sdp.find_first_of(";\r\n", pos);
+            std::string b64 = sdp.substr(pos + keyLen, endLine - (pos + keyLen));
+            std::vector<uint8_t> bin = base64Decode(b64);
+            if (!bin.empty() && m_naluCallback) {
+                std::vector<uint8_t> nalu = {0x00, 0x00, 0x00, 0x01};
+                nalu.insert(nalu.end(), bin.begin(), bin.end());
+                LOGI("Emitting SDP HEVC parameter NALU (type=%d, size=%zu)",
+                     (bin[0] >> 1) & 0x3F, nalu.size());
+                m_naluCallback(nalu.data(), nalu.size(), 0, true);
+            }
+        }
     }
 
     // Extract control uri

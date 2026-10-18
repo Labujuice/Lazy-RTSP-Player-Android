@@ -73,56 +73,88 @@ bool CodecProber::probeNalu(const uint8_t* nalu, size_t size) {
     if (!nalu || size < 4) return false;
     m_probePacketCount++;
 
-    // Find start code offset
-    size_t offset = 0;
-    if (nalu[0] == 0 && nalu[1] == 0) {
-        if (nalu[2] == 1) offset = 3;
-        else if (size > 4 && nalu[2] == 0 && nalu[3] == 1) offset = 4;
+    size_t i = 0;
+    while (i + 3 < size) {
+        size_t startCodeLen = 0;
+        if (nalu[i] == 0 && nalu[i + 1] == 0) {
+            if (nalu[i + 2] == 1) {
+                startCodeLen = 3;
+            } else if (i + 4 <= size && nalu[i + 2] == 0 && nalu[i + 3] == 1) {
+                startCodeLen = 4;
+            }
+        }
+
+        if (startCodeLen == 0) {
+            i++;
+            continue;
+        }
+
+        size_t naluStart = i + startCodeLen;
+        size_t nextStart = size;
+        for (size_t j = naluStart; j + 2 < size; ++j) {
+            if (nalu[j] == 0 && nalu[j + 1] == 0 &&
+                (nalu[j + 2] == 1 || (j + 3 < size && nalu[j + 2] == 0 && nalu[j + 3] == 1))) {
+                nextStart = j;
+                break;
+            }
+        }
+
+        size_t naluTotalSize = nextStart - i;
+        size_t payloadSize = nextStart - naluStart;
+
+        if (payloadSize > 0) {
+            uint8_t firstByte = nalu[naluStart];
+            uint8_t h264Type = firstByte & 0x1F;
+            uint8_t h265Type = (firstByte >> 1) & 0x3F;
+
+            // Check H.264 SPS / PPS
+            if (h264Type == 7) { // SPS
+                LOGI("CodecProber: Detected H.264 SPS (size=%zu)", naluTotalSize);
+                m_info.codec = VideoCodecType::H264;
+                m_info.mimeType = "video/avc";
+                m_info.sps.assign(nalu + i, nalu + nextStart);
+                parseH264Sps(nalu + naluStart + 1, payloadSize - 1);
+            } else if (h264Type == 8) { // PPS
+                LOGI("CodecProber: Detected H.264 PPS (size=%zu)", naluTotalSize);
+                m_info.pps.assign(nalu + i, nalu + nextStart);
+            }
+
+            // Check H.265 VPS / SPS / PPS
+            if (h265Type == 32) { // VPS
+                LOGI("CodecProber: Detected H.265 VPS (size=%zu)", naluTotalSize);
+                m_info.codec = VideoCodecType::H265;
+                m_info.mimeType = "video/hevc";
+                m_info.vps.assign(nalu + i, nalu + nextStart);
+            } else if (h265Type == 33) { // SPS
+                LOGI("CodecProber: Detected H.265 SPS (size=%zu)", naluTotalSize);
+                m_info.codec = VideoCodecType::H265;
+                m_info.mimeType = "video/hevc";
+                m_info.sps.assign(nalu + i, nalu + nextStart);
+                parseH265Sps(nalu + naluStart + 2, payloadSize - 2);
+            } else if (h265Type == 34) { // PPS
+                LOGI("CodecProber: Detected H.265 PPS (size=%zu)", naluTotalSize);
+                m_info.pps.assign(nalu + i, nalu + nextStart);
+            }
+        }
+
+        i = nextStart;
     }
 
-    if (offset >= size) return false;
-
-    // Detect H.264 vs H.265
-    uint8_t firstByte = nalu[offset];
-    uint8_t h264Type = firstByte & 0x1F;
-    uint8_t h265Type = (firstByte >> 1) & 0x3F;
-
-    // Check H.264 SPS / PPS
-    if (h264Type == 7) { // SPS
-        LOGI("CodecProber: Detected H.264 SPS (size=%zu)", size);
-        m_info.codec = VideoCodecType::H264;
-        m_info.mimeType = "video/avc";
-        m_info.sps.assign(nalu, nalu + size);
-        parseH264Sps(nalu + offset + 1, size - offset - 1);
-    } else if (h264Type == 8) { // PPS
-        LOGI("CodecProber: Detected H.264 PPS (size=%zu)", size);
-        m_info.pps.assign(nalu, nalu + size);
-    }
-
-    // Check H.265 VPS / SPS / PPS
-    if (h265Type == 32) { // VPS
-        LOGI("CodecProber: Detected H.265 VPS (size=%zu)", size);
-        m_info.codec = VideoCodecType::H265;
-        m_info.mimeType = "video/hevc";
-        m_info.vps.assign(nalu, nalu + size);
-    } else if (h265Type == 33) { // SPS
-        LOGI("CodecProber: Detected H.265 SPS (size=%zu)", size);
-        m_info.codec = VideoCodecType::H265;
-        m_info.mimeType = "video/hevc";
-        m_info.sps.assign(nalu, nalu + size);
-        parseH265Sps(nalu + offset + 2, size - offset - 2);
-    } else if (h265Type == 34) { // PPS
-        LOGI("CodecProber: Detected H.265 PPS (size=%zu)", size);
-        m_info.pps.assign(nalu, nalu + size);
-    }
-
-    // Probing condition satisfied
-    if (m_info.codec == VideoCodecType::H264 && !m_info.sps.empty()) {
+    // Probing condition satisfied: Require BOTH SPS and PPS
+    if (m_info.codec == VideoCodecType::H264 && !m_info.sps.empty() && !m_info.pps.empty()) {
         m_info.isProbed = true;
-    } else if (m_info.codec == VideoCodecType::H265 && !m_info.sps.empty()) {
+    } else if (m_info.codec == VideoCodecType::H265 && !m_info.sps.empty() && !m_info.pps.empty()) {
         m_info.isProbed = true;
-    } else if (m_probePacketCount >= 10 && m_info.width > 0) {
+    } else if (m_probePacketCount >= 30) {
+        if (m_info.codec == VideoCodecType::UNKNOWN) {
+            m_info.codec = VideoCodecType::H264;
+            m_info.mimeType = "video/avc";
+        }
+        if (m_info.width <= 0) m_info.width = 1280;
+        if (m_info.height <= 0) m_info.height = 720;
         m_info.isProbed = true;
+        LOGI("CodecProber fallback: Forced probe after 30 packets (%s %dx%d)",
+             m_info.mimeType.c_str(), m_info.width, m_info.height);
     }
 
     return m_info.isProbed;

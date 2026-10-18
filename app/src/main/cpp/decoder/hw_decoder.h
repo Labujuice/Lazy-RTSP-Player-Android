@@ -20,7 +20,7 @@ public:
               ANativeWindow* window) override;
 
     bool decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool isKeyFrame) override;
-    void drainOutput(bool render = true) override;
+    int drainOutput(bool render = true) override;
     void flush() override;
     void release() override;
 

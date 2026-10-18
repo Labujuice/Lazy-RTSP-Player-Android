@@ -19,7 +19,7 @@ public:
                       ANativeWindow* window) = 0;
 
     virtual bool decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool isKeyFrame) = 0;
-    virtual void drainOutput(bool render = true) = 0;
+    virtual int drainOutput(bool render = true) = 0;
     virtual void flush() = 0;
     virtual void release() = 0;
 

@@ -37,6 +37,8 @@ public:
 private:
     void processH264(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool marker);
     void processH265(const uint8_t* payload, size_t payloadSize, uint32_t timestamp, bool marker);
+    void appendNaluToAu(const uint8_t* nalu, size_t size, uint32_t timestamp, bool isKey, bool marker);
+    void flushCurrentAu();
 
     VideoCodecType m_codec = VideoCodecType::H264;
     NaluCallback m_naluCallback;
@@ -45,6 +47,11 @@ private:
     std::vector<uint8_t> m_assemblyBuffer;
     bool m_isAssembling = false;
     uint32_t m_currentTimestamp = 0;
+
+    std::vector<uint8_t> m_auBuffer;
+    uint32_t m_auTimestamp = 0;
+    bool m_auHasData = false;
+    bool m_auIsKeyFrame = false;
 
     bool m_hasLastSeq = false;
     uint16_t m_lastSeq = 0;
