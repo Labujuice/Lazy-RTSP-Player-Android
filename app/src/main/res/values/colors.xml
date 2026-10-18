@@ -10,4 +10,5 @@
     <color name="accent_blue">#FF2563EB</color>
     <color name="accent_green">#FF16A34A</color>
     <color name="accent_red">#FFDC2626</color>
+    <color name="ic_launcher_background">#FF13131B</color>
 </resources>
