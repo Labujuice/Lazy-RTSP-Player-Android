@@ -61,7 +61,9 @@ private:
     TelemetrySnapshot m_lastSnapshot;
 
     // CPU measurement state
-    unsigned long long m_prevAppTicks = 0;
+    uint64_t m_prevAppNs = 0;
+    uint64_t m_prevMonoNs = 0;
+    unsigned long long m_prevIdleTicks = 0;
     unsigned long long m_prevTotalTicks = 0;
 };
 

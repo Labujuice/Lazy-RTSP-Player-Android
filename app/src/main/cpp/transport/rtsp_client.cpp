@@ -258,8 +258,28 @@ bool RtspClient::open(const std::string& url, RtspTransportMode mode, NaluCallba
     parseSdp(resp);
 
     // 3. SETUP
-    int clientRtpPort = 50000 + (rand() % 1000) * 2;
-    int clientRtcpPort = clientRtpPort + 1;
+    int clientRtpPort = 0;
+    int clientRtcpPort = 0;
+
+    if (m_mode == RtspTransportMode::UDP) {
+        static uint32_t portSeed = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+        bool bound = false;
+        for (int retry = 0; retry < 10; ++retry) {
+            int offset = (rand_r(&portSeed) % 5000) * 2;
+            clientRtpPort = 30000 + offset;
+            clientRtcpPort = clientRtpPort + 1;
+            if (m_rtpUdpTransport.bindUdp(clientRtpPort) && m_rtcpUdpTransport.bindUdp(clientRtcpPort)) {
+                bound = true;
+                break;
+            }
+            m_rtpUdpTransport.closeSocket();
+            m_rtcpUdpTransport.closeSocket();
+        }
+        if (!bound) {
+            LOGE("Failed to bind random local RTP/RTCP UDP ports");
+            return false;
+        }
+    }
 
     ss.str("");
     ss.clear();
@@ -267,10 +287,6 @@ bool RtspClient::open(const std::string& url, RtspTransportMode mode, NaluCallba
        << "CSeq: " << m_cseq++ << "\r\n";
 
     if (m_mode == RtspTransportMode::UDP) {
-        if (!m_rtpUdpTransport.bindUdp(clientRtpPort) || !m_rtcpUdpTransport.bindUdp(clientRtcpPort)) {
-            LOGE("Failed to bind local RTP/RTCP UDP ports %d/%d", clientRtpPort, clientRtcpPort);
-            return false;
-        }
         ss << "Transport: RTP/AVP;unicast;client_port=" << clientRtpPort << "-" << clientRtcpPort << "\r\n";
     } else {
         ss << "Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n";

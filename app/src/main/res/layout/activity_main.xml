@@ -25,7 +25,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:background="@color/control_bar_bg"
-        android:padding="8dp"
+        android:padding="6dp"
         android:gravity="center_vertical"
         app:layout_constraintTop_toTopOf="parent">
 
@@ -37,18 +37,21 @@
             android:hint="@string/default_rtsp_url"
             android:textColorHint="#FFAAAAAA"
             android:textColor="@color/white"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:singleLine="true"
             android:imeOptions="actionDone"
             android:background="#33FFFFFF"
-            android:padding="8dp"
+            android:padding="6dp"
             android:focusable="true" />
 
         <Button
             android:id="@+id/btnHistory"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
             android:text="@string/history"
             android:textSize="12sp"
             android:textColor="@color/white"
@@ -59,7 +62,10 @@
             android:id="@+id/btnPlayStop"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
             android:text="@string/connect"
             android:textSize="12sp"
             android:textColor="@color/white"
@@ -70,7 +76,10 @@
             android:id="@+id/btnRecord"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
             android:text="@string/record"
             android:textSize="12sp"
             android:textColor="@color/white"
@@ -81,8 +90,39 @@
             android:id="@+id/btnSnapshot"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
             android:text="@string/snapshot"
+            android:textSize="12sp"
+            android:textColor="@color/white"
+            android:backgroundTint="#FF4B5563"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/btnOsd"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
+            android:text="@string/osd"
+            android:textSize="12sp"
+            android:textColor="@color/white"
+            android:backgroundTint="#FF4B5563"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/btnTimer"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
+            android:text="@string/timer"
             android:textSize="12sp"
             android:textColor="@color/white"
             android:backgroundTint="#FF4B5563"
@@ -92,7 +132,10 @@
             android:id="@+id/btnSettings"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="4dp"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:minWidth="0dp"
             android:text="@string/settings"
             android:textSize="12sp"
             android:textColor="@color/white"
@@ -144,5 +187,42 @@
             android:lineSpacingExtra="2dp"
             android:text="TELEMETRY INITIALIZING..." />
     </ScrollView>
+
+    <!-- Millisecond Stopwatch / G2G Latency Timer Overlay (Bottom-Left) -->
+    <LinearLayout
+        android:id="@+id/stopwatchContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#D0111827"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:elevation="12dp"
+        android:visibility="gone"
+        android:gravity="center_vertical"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏱ "
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/tvStopwatch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="#FF00FF66"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04"
+            android:text="00:00:00:000" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

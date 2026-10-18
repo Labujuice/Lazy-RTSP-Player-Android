@@ -24,6 +24,10 @@ void TelemetryCollector::reset() {
     m_droppedLoss.store(0);
     m_decodeTimeMs.store(0.0);
     m_lastSampleTime = std::chrono::steady_clock::now();
+    m_prevAppNs = 0;
+    m_prevMonoNs = 0;
+    m_prevIdleTicks = 0;
+    m_prevTotalTicks = 0;
 }
 
 void TelemetryCollector::recordBytesReceived(size_t bytes) {
@@ -87,46 +91,52 @@ TelemetrySnapshot TelemetryCollector::collect() {
 }
 
 void TelemetryCollector::updateCpuStats() {
-    // 1. Read app ticks from /proc/self/stat
-    unsigned long utime = 0, stime = 0;
-    FILE* statFile = fopen("/proc/self/stat", "r");
-    if (statFile) {
-        // pid (comm) state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime(14) stime(15)
-        if (fscanf(statFile, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu",
-                   &utime, &stime) == 2) {
-            // Read success
-        }
-        fclose(statFile);
+    // 1. High-resolution App CPU measurement via CLOCK_PROCESS_CPUTIME_ID and CLOCK_MONOTONIC
+    struct timespec tsProcess{}, tsMonotonic{};
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tsProcess);
+    clock_gettime(CLOCK_MONOTONIC, &tsMonotonic);
+
+    uint64_t currentAppNs = static_cast<uint64_t>(tsProcess.tv_sec) * 1000000000ULL + tsProcess.tv_nsec;
+    uint64_t currentMonoNs = static_cast<uint64_t>(tsMonotonic.tv_sec) * 1000000000ULL + tsMonotonic.tv_nsec;
+
+    long numCores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (numCores <= 0) numCores = 4;
+
+    if (m_prevMonoNs > 0 && currentMonoNs > m_prevMonoNs) {
+        uint64_t deltaMono = currentMonoNs - m_prevMonoNs;
+        uint64_t deltaApp = (currentAppNs >= m_prevAppNs) ? (currentAppNs - m_prevAppNs) : 0;
+
+        // Normalized App CPU usage across all cores (0.0% ~ 100.0%)
+        double appRate = (static_cast<double>(deltaApp) / static_cast<double>(deltaMono * numCores)) * 100.0;
+        if (appRate > 100.0) appRate = 100.0;
+        m_lastSnapshot.cpuRateApp = appRate;
     }
 
-    // 2. Read total ticks from /proc/stat
+    m_prevAppNs = currentAppNs;
+    m_prevMonoNs = currentMonoNs;
+
+    // 2. Read total ticks from /proc/stat if accessible (root or older Android)
     unsigned long long user = 0, nice = 0, system = 0, idle = 0, iowait = 0, irq = 0, softirq = 0;
     FILE* procStat = fopen("/proc/stat", "r");
     if (procStat) {
         char cpuLabel[16];
         if (fscanf(procStat, "%s %llu %llu %llu %llu %llu %llu %llu",
                    cpuLabel, &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 8) {
-            // Read success
+            unsigned long long currentTotalTicks = user + nice + system + idle + iowait + irq + softirq;
+            if (m_prevTotalTicks > 0 && currentTotalTicks > m_prevTotalTicks) {
+                unsigned long long totalDiff = currentTotalTicks - m_prevTotalTicks;
+                unsigned long long idleDiff = (idle >= m_prevIdleTicks) ? (idle - m_prevIdleTicks) : 0;
+                double totalRate = (static_cast<double>(totalDiff - idleDiff) / static_cast<double>(totalDiff)) * 100.0;
+                m_lastSnapshot.cpuRateTotal = totalRate;
+            }
+            m_prevIdleTicks = idle;
+            m_prevTotalTicks = currentTotalTicks;
         }
         fclose(procStat);
+    } else {
+        // /proc/stat is protected by SELinux on modern Android (API 26+)
+        m_lastSnapshot.cpuRateTotal = -1.0;
     }
-
-    unsigned long long currentAppTicks = utime + stime;
-    unsigned long long currentTotalTicks = user + nice + system + idle + iowait + irq + softirq;
-
-    if (m_prevTotalTicks > 0 && currentTotalTicks > m_prevTotalTicks) {
-        unsigned long long totalDiff = currentTotalTicks - m_prevTotalTicks;
-        unsigned long long appDiff = (currentAppTicks >= m_prevAppTicks) ? (currentAppTicks - m_prevAppTicks) : 0;
-
-        long numCores = sysconf(_SC_NPROCESSORS_ONLN);
-        if (numCores <= 0) numCores = 4;
-
-        m_lastSnapshot.cpuRateApp = (static_cast<double>(appDiff) / static_cast<double>(totalDiff)) * 100.0 * numCores;
-        m_lastSnapshot.cpuRateTotal = (static_cast<double>(totalDiff - idle) / static_cast<double>(totalDiff)) * 100.0;
-    }
-
-    m_prevAppTicks = currentAppTicks;
-    m_prevTotalTicks = currentTotalTicks;
 }
 
 void TelemetryCollector::updateMemoryStats() {

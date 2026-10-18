@@ -1,10 +1,12 @@
 package com.kenny.lazyplayer
 
 import android.app.AlertDialog
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -32,8 +34,11 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
     private val nativePlayer = NativePlayer()
 
     private val telemetryHandler = Handler(Looper.getMainLooper())
+    private val stopwatchHandler = Handler(Looper.getMainLooper())
     private var isRecording = false
     private var isPlaying = false
+    private var isTimerRunning = false
+    private var timerStartTime = 0L
     private var lastBackPressTime = 0L
 
     private lateinit var gestureDetector: GestureDetector
@@ -44,6 +49,20 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
                 updateTelemetryDisplay()
             }
             telemetryHandler.postDelayed(this, 500)
+        }
+    }
+
+    private val stopwatchRunnable = object : Runnable {
+        override fun run() {
+            if (isTimerRunning) {
+                val elapsed = SystemClock.elapsedRealtime() - timerStartTime
+                val hours = elapsed / 3600000L
+                val minutes = (elapsed % 3600000L) / 60000L
+                val seconds = (elapsed % 60000L) / 1000L
+                val millis = elapsed % 1000L
+                binding.tvStopwatch.text = String.format(Locale.US, "%02d:%02d:%02d:%03d", hours, minutes, seconds, millis)
+                stopwatchHandler.postDelayed(this, 16)
+            }
         }
     }
 
@@ -59,6 +78,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
 
         // Set default OSD visibility based on BuildConfig (Debug: visible, Release: hidden)
         binding.osdContainer.isVisible = BuildConfig.DEFAULT_OSD_VISIBLE
+        updateOsdButtonState(binding.osdContainer.isVisible)
 
         setupGestures()
         setupControls()
@@ -115,15 +135,48 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
             takeSnapshot()
         }
 
+        binding.btnOsd.setOnClickListener {
+            toggleOsd()
+        }
+
+        binding.btnTimer.setOnClickListener {
+            toggleStopwatch()
+        }
+
         binding.btnSettings.setOnClickListener {
             showSettingsDialog()
         }
     }
 
     private fun toggleOsd() {
-        binding.osdContainer.isVisible = !binding.osdContainer.isVisible
-        val status = if (binding.osdContainer.isVisible) "OSD Shown" else "OSD Hidden"
+        val visible = !binding.osdContainer.isVisible
+        binding.osdContainer.isVisible = visible
+        updateOsdButtonState(visible)
+        val status = if (visible) "OSD Shown" else "OSD Hidden"
         Toast.makeText(this, status, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateOsdButtonState(visible: Boolean) {
+        val color = if (visible) 0xFF2563EB.toInt() else 0xFF4B5563.toInt()
+        binding.btnOsd.backgroundTintList = ColorStateList.valueOf(color)
+    }
+
+    private fun toggleStopwatch() {
+        if (isTimerRunning) {
+            isTimerRunning = false
+            stopwatchHandler.removeCallbacks(stopwatchRunnable)
+            binding.stopwatchContainer.isVisible = false
+            binding.btnTimer.backgroundTintList = ColorStateList.valueOf(0xFF4B5563.toInt())
+            Toast.makeText(this, "Timer Stopped", Toast.LENGTH_SHORT).show()
+        } else {
+            isTimerRunning = true
+            timerStartTime = SystemClock.elapsedRealtime()
+            binding.tvStopwatch.text = "00:00:00:000"
+            binding.stopwatchContainer.isVisible = true
+            binding.btnTimer.backgroundTintList = ColorStateList.valueOf(0xFF059669.toInt()) // Emerald when active
+            stopwatchHandler.post(stopwatchRunnable)
+            Toast.makeText(this, "Timer Started", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun startPlaying() {
@@ -141,7 +194,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
         if (success) {
             isPlaying = true
             binding.btnPlayStop.text = getString(R.string.stop)
-            binding.btnPlayStop.setBackgroundColor(getColor(R.color.accent_red))
+            binding.btnPlayStop.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_red))
 
             // Save to LRU history (PRD 4.8)
             dataStore.recordSuccessfulUrl(url)
@@ -157,7 +210,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
         nativePlayer.stop()
         isPlaying = false
         binding.btnPlayStop.text = getString(R.string.connect)
-        binding.btnPlayStop.setBackgroundColor(getColor(R.color.accent_green))
+        binding.btnPlayStop.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_green))
         binding.tvDisconnectionWarning.isVisible = false
         binding.tvOsdContent.text = "STOPPED"
     }
@@ -180,7 +233,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
             if (started) {
                 isRecording = true
                 binding.btnRecord.text = getString(R.string.stop_record)
-                binding.btnRecord.setBackgroundColor(getColor(R.color.accent_red))
+                binding.btnRecord.backgroundTintList = ColorStateList.valueOf(getColor(R.color.accent_red))
                 Toast.makeText(this, "Recording started: ${file.name}", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Recording start failed (stream probing?)", Toast.LENGTH_SHORT).show()
@@ -189,7 +242,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
             nativePlayer.stopRecording()
             isRecording = false
             binding.btnRecord.text = getString(R.string.record)
-            binding.btnRecord.setBackgroundColor(0xFF4B5563.toInt())
+            binding.btnRecord.backgroundTintList = ColorStateList.valueOf(0xFF4B5563.toInt())
             Toast.makeText(this, "Clean MP4 saved to Movies/FPV_Records", Toast.LENGTH_LONG).show()
         }
     }
@@ -219,16 +272,20 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
         val t = nativePlayer.getTelemetry()
         val text = buildString {
             append("=== OSD TELEMETRY ===\n")
-            append(String.format("PIPELINE:   %s\n", t.pipelineCombination))
-            append(String.format("TRANSPORT:  %s\n", t.transportProtocol))
-            append(String.format("CODEC:      %s\n", t.codecResolution))
-            append(String.format("BITRATE:    %.1f kbps\n", t.bitrateKbps))
-            append(String.format("RENDER FPS: %.1f fps (Src: %d)\n", t.renderFps, t.sourceFps))
-            append(String.format("DECODE TIME:%.1f ms\n", t.decodeTimeMs))
-            append(String.format("DROPPED:    Jitter: %d / Loss: %d\n", t.droppedFramesJitter, t.droppedFramesLoss))
-            append(String.format("CPU USAGE:  App: %.1f%% / Total: %.1f%%\n", t.cpuRateApp, t.cpuRateTotal))
-            append(String.format("RAM MEMORY: RSS: %.1f MB / PSS: %.1f MB\n", t.ramRssMb, t.ramPssMb))
-            append(String.format("GPU STATE:  %s", t.gpuState))
+            append(String.format(Locale.US, "PIPELINE:   %s\n", t.pipelineCombination))
+            append(String.format(Locale.US, "TRANSPORT:  %s\n", t.transportProtocol))
+            append(String.format(Locale.US, "CODEC:      %s\n", t.codecResolution))
+            append(String.format(Locale.US, "BITRATE:    %.1f kbps\n", t.bitrateKbps))
+            append(String.format(Locale.US, "RENDER FPS: %.1f fps (Src: %d)\n", t.renderFps, t.sourceFps))
+            append(String.format(Locale.US, "DECODE TIME:%.1f ms\n", t.decodeTimeMs))
+            append(String.format(Locale.US, "DROPPED:    Jitter: %d / Loss: %d\n", t.droppedFramesJitter, t.droppedFramesLoss))
+            if (t.cpuRateTotal >= 0.0) {
+                append(String.format(Locale.US, "CPU USAGE:  App: %.1f%% / Total: %.1f%%\n", t.cpuRateApp, t.cpuRateTotal))
+            } else {
+                append(String.format(Locale.US, "CPU USAGE:  App: %.1f%% / Total: N/A\n", t.cpuRateApp))
+            }
+            append(String.format(Locale.US, "RAM MEMORY: RSS: %.1f MB / PSS: %.1f MB\n", t.ramRssMb, t.ramPssMb))
+            append(String.format(Locale.US, "GPU STATE:  %s", t.gpuState))
         }
         binding.tvOsdContent.text = text
     }
@@ -385,6 +442,7 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, NativePlayer.P
     override fun onDestroy() {
         super.onDestroy()
         telemetryHandler.removeCallbacks(telemetryRunnable)
+        stopwatchHandler.removeCallbacks(stopwatchRunnable)
         nativePlayer.stop()
         nativePlayer.release()
     }
