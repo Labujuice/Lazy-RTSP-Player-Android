@@ -14,7 +14,7 @@ struct PlayerContext {
 
 extern "C" {
 
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
+JNIEXPORT jint JNI_OnLoad(JavaVM* /*vm*/, void* /*reserved*/) {
     LOGI("UltraLowLatencyPlayer JNI_OnLoad");
     return JNI_VERSION_1_6;
 }

@@ -82,7 +82,7 @@ bool HwDecoder::init(const std::string& mimeType, int width, int height,
     return true;
 }
 
-bool HwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool isKeyFrame) {
+bool HwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool /*isKeyFrame*/) {
     if (!m_codec || !m_isConfigured || !nalu || size == 0) {
         return false;
     }

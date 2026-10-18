@@ -117,7 +117,6 @@ void TelemetryCollector::updateCpuStats() {
     if (m_prevTotalTicks > 0 && currentTotalTicks > m_prevTotalTicks) {
         unsigned long long totalDiff = currentTotalTicks - m_prevTotalTicks;
         unsigned long long appDiff = (currentAppTicks >= m_prevAppTicks) ? (currentAppTicks - m_prevAppTicks) : 0;
-        unsigned long long nonIdleDiff = (user + nice + system + irq + softirq);
 
         long numCores = sysconf(_SC_NPROCESSORS_ONLN);
         if (numCores <= 0) numCores = 4;

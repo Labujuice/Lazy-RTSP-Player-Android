@@ -54,8 +54,6 @@ private:
     int m_cseq = 1;
     std::string m_session;
     std::string m_videoControlUri;
-    int m_serverRtpPort = 0;
-    int m_serverRtcpPort = 0;
 
     std::atomic<bool> m_running{false};
     std::thread m_streamThread;

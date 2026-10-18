@@ -97,7 +97,7 @@ void Mp4Muxer::writeSample(const uint8_t* nalu, size_t size, uint64_t ptsUs, boo
     info.offset = 0;
     info.size = static_cast<int32_t>(size);
     info.presentationTimeUs = static_cast<int64_t>(relativePtsUs);
-    info.flags = isKeyFrame ? AMEDIACODEC_BUFFER_FLAG_KEY_FRAME : 0;
+    info.flags = isKeyFrame ? 1 : 0; // 1 = MediaCodec BUFFER_FLAG_KEY_FRAME (Sync Frame)
 
     AMediaMuxer_writeSampleData(m_muxer, static_cast<size_t>(m_trackIndex), nalu, &info);
 }

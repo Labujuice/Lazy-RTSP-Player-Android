@@ -87,7 +87,7 @@ bool SwDecoder::init(const std::string& mimeType, int width, int height,
     return true;
 }
 
-bool SwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool isKeyFrame) {
+bool SwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool /*isKeyFrame*/) {
     if (!m_codec || !m_isConfigured || !nalu || size == 0) return false;
 
     m_lastInputTime = std::chrono::steady_clock::now();
