@@ -191,13 +191,13 @@ void PlayerEngine::onNaluReceived(const uint8_t* data, size_t size, uint32_t tim
         m_mp4Muxer->writeSample(data, size, ptsUs, isKeyFrame);
     }
 
-    // 3. Drop non-keyframes when waiting for IDR
-    if (m_waitingForIdr.load()) {
+    // 3. Drop non-keyframes when waiting for IDR or recovering from disconnection
+    if (m_waitingForIdr.load() || m_isDisconnected.load()) {
         if (!isKeyFrame) {
             return; // Drop P/B frame
         }
         m_waitingForIdr.store(false);
-        LOGI("Resuming playback on IDR keyframe after queue flush!");
+        LOGI("Resuming playback on IDR keyframe!");
     }
 
     // 4. Queue packet for decoder thread using pre-allocated pool
@@ -339,11 +339,11 @@ void PlayerEngine::decodeLoop() {
             if (m_decoder && m_prober->isProbed()) {
                 uint64_t ptsUs = static_cast<uint64_t>(buf->timestamp) * 1000 / 90;
                 bool success = m_decoder->decode(buf->data, buf->size, ptsUs, buf->isKeyFrame);
+                int rendered = m_decoder->drainOutput(/*render=*/true);
+                for (int r = 0; r < rendered; ++r) {
+                    m_telemetry.recordRenderFrame();
+                }
                 if (success) {
-                    int rendered = m_decoder->drainOutput(/*render=*/true);
-                    for (int r = 0; r < rendered; ++r) {
-                        m_telemetry.recordRenderFrame();
-                    }
                     m_telemetry.setDecodeTimeMs(m_decoder->getLastDecodeTimeMs());
                 }
 
@@ -384,15 +384,16 @@ void PlayerEngine::watchdogLoop() {
         double elapsedMs = std::chrono::duration<double, std::milli>(now - m_lastPacketTime).count();
 
         // 500ms without packet triggers freeze & disconnection warning
-        if (elapsedMs >= 500.0 && m_state.load() == STATE_PLAYING) {
+        if (elapsedMs >= 500.0 && (m_state.load() == STATE_PLAYING || m_isDisconnected.load())) {
             if (!m_isDisconnected.load()) {
                 m_isDisconnected.store(true);
+                m_reconnectBackoffMs = 200;
                 LOGW("500ms Watchdog triggered! No video packets for %.1f ms. Freezing last frame.", elapsedMs);
                 if (m_stateCallback) {
                     m_stateCallback(STATE_DISCONNECTED, "⚠️ Disconnection (Reconnecting...)");
                 }
-                attemptReconnect();
             }
+            attemptReconnect();
         }
     }
 
@@ -402,12 +403,15 @@ void PlayerEngine::watchdogLoop() {
 void PlayerEngine::attemptReconnect() {
     LOGI("Attempting reconnection with backoff %u ms", m_reconnectBackoffMs);
     // Exponential backoff: 200ms -> 500ms -> 1000ms -> 2000ms
-    std::this_thread::sleep_for(std::chrono::milliseconds(m_reconnectBackoffMs));
+    int sleepSteps = m_reconnectBackoffMs / 50;
+    for (int i = 0; i < sleepSteps && m_running.load() && m_isDisconnected.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     if (m_reconnectBackoffMs == 200) m_reconnectBackoffMs = 500;
     else if (m_reconnectBackoffMs == 500) m_reconnectBackoffMs = 1000;
     else m_reconnectBackoffMs = 2000;
 
-    if (!m_running.load()) return;
+    if (!m_running.load() || !m_isDisconnected.load()) return;
 
     if (m_transportType == TransportType::DIRECT_UDP) {
         m_directUdp->start(m_udpPort, [this](const uint8_t* d, size_t s, uint32_t ts, bool key) {
@@ -416,10 +420,15 @@ void PlayerEngine::attemptReconnect() {
     } else {
         RtspTransportMode mode = (m_transportType == TransportType::RTSP_TCP) ?
                                   RtspTransportMode::TCP_INTERLEAVED : RtspTransportMode::UDP;
-        m_rtspClient->open(m_url, mode,
+        bool ok = m_rtspClient->open(m_url, mode,
             [this](const uint8_t* d, size_t s, uint32_t ts, bool key) { onNaluReceived(d, s, ts, key); },
             [this](uint16_t exp, uint16_t rec) { onPacketLoss(exp, rec); }
         );
+        if (ok) {
+            LOGI("Reconnection RTSP open succeeded, waiting for IDR keyframe...");
+        } else {
+            LOGW("Reconnection RTSP open failed");
+        }
     }
 }
 

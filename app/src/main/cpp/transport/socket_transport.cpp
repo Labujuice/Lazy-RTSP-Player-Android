@@ -105,6 +105,10 @@ ssize_t SocketTransport::recvTcp(void* buffer, size_t size, int timeoutMs) {
     if (ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return 0;
     }
+    if (ret == 0) {
+        // EOF: Peer closed connection
+        return -1;
+    }
     return ret;
 }
 

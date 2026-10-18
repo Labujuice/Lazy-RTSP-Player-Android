@@ -94,7 +94,7 @@ bool HwDecoder::decode(const uint8_t* nalu, size_t size, uint64_t ptsUs, bool /*
     if (inIdx < 0) {
         // Decoder input queue is momentarily full, drain output first
         drainOutput(true);
-        inIdx = AMediaCodec_dequeueInputBuffer(m_codec, 1000); // 1ms wait
+        inIdx = AMediaCodec_dequeueInputBuffer(m_codec, 10000); // 10ms wait
     }
 
     if (inIdx >= 0) {

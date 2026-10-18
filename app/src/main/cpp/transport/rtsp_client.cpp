@@ -54,11 +54,13 @@ bool RtspClient::parseUrl(const std::string& url) {
 
 bool RtspClient::sendRequest(const std::string& req) {
     LOGV("RTSP >>> \n%s", req.c_str());
+    std::lock_guard<std::mutex> lock(m_tcpMutex);
     ssize_t sent = m_tcpTransport.sendTcp(req.data(), req.size());
     return sent == static_cast<ssize_t>(req.size());
 }
 
 std::string RtspClient::receiveResponse(int timeoutMs) {
+    std::lock_guard<std::mutex> lock(m_tcpMutex);
     std::string resp;
     char buf[1024];
     int elapsed = 0;
@@ -282,13 +284,21 @@ bool RtspClient::open(const std::string& url, RtspTransportMode mode, NaluCallba
         return false;
     }
 
-    // Extract Session
+    // Extract Session & Timeout
     size_t sessPos = resp.find("Session: ");
     if (sessPos == std::string::npos) sessPos = resp.find("session: ");
     if (sessPos != std::string::npos) {
         size_t endSess = resp.find_first_of(";\r\n", sessPos + 9);
         m_session = resp.substr(sessPos + 9, endSess - (sessPos + 9));
         LOGI("RTSP Session ID: %s", m_session.c_str());
+
+        size_t toPos = resp.find("timeout=", sessPos);
+        if (toPos != std::string::npos && toPos < resp.find("\r\n", sessPos)) {
+            try {
+                m_sessionTimeoutSec = std::stoi(resp.substr(toPos + 8));
+                LOGI("RTSP Session Timeout: %d s", m_sessionTimeoutSec);
+            } catch (...) {}
+        }
     }
 
     // 4. PLAY
@@ -318,6 +328,7 @@ bool RtspClient::open(const std::string& url, RtspTransportMode mode, NaluCallba
     } else {
         m_streamThread = std::thread(&RtspClient::streamLoopUdp, this);
     }
+    m_heartbeatThread = std::thread(&RtspClient::heartbeatLoop, this);
 
     return true;
 }
@@ -325,6 +336,10 @@ bool RtspClient::open(const std::string& url, RtspTransportMode mode, NaluCallba
 void RtspClient::close() {
     if (m_running.load()) {
         m_running.store(false);
+
+        if (m_heartbeatThread.joinable()) {
+            m_heartbeatThread.join();
+        }
 
         // Send TEARDOWN
         if (!m_session.empty() && m_tcpTransport.getFd() >= 0) {
@@ -347,22 +362,78 @@ void RtspClient::close() {
     }
 }
 
+void RtspClient::heartbeatLoop() {
+    int intervalSec = std::max(5, std::min(m_sessionTimeoutSec / 2, 20));
+    LOGI("RTSP Keep-Alive heartbeat loop started (interval=%d s)", intervalSec);
+
+    while (m_running.load()) {
+        for (int i = 0; i < intervalSec * 10 && m_running.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (!m_running.load()) break;
+
+        if (!m_session.empty()) {
+            std::ostringstream ss;
+            ss << "GET_PARAMETER " << m_url << " RTSP/1.0\r\n"
+               << "CSeq: " << m_cseq++ << "\r\n"
+               << "Session: " << m_session << "\r\n"
+               << "User-Agent: UltraLowLatencyRTSPPlayer/1.3\r\n\r\n";
+            sendRequest(ss.str());
+            if (m_mode == RtspTransportMode::UDP) {
+                receiveResponse(500);
+            }
+        }
+    }
+    LOGI("RTSP Keep-Alive heartbeat loop exited");
+}
+
 void RtspClient::streamLoopTcp() {
     std::vector<uint8_t> buffer(65536);
     while (m_running.load()) {
         // Read interleaved frame: '$' <channel: 1> <length: 2>
         uint8_t magic = 0;
-        ssize_t n = m_tcpTransport.recvTcp(&magic, 1, 100);
-        if (n <= 0) continue;
+        ssize_t n = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_tcpMutex);
+            n = m_tcpTransport.recvTcp(&magic, 1, 100);
+        }
+        if (n < 0) {
+            LOGW("streamLoopTcp: TCP connection lost (recv returned %zd)", n);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
+        if (n == 0) continue; // poll timeout
+
+        if (magic != '$') {
+            std::string line;
+            line += static_cast<char>(magic);
+            while (m_running.load() && line.find("\r\n\r\n") == std::string::npos) {
+                char ch = 0;
+                ssize_t r = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_tcpMutex);
+                    r = m_tcpTransport.recvTcp(&ch, 1, 50);
+                }
+                if (r > 0) line += ch;
+                else break;
+            }
+            continue;
+        }
 
         if (magic == '$') {
             uint8_t header[3];
             size_t got = 0;
+            bool readErr = false;
             while (got < 3 && m_running.load()) {
-                ssize_t r = m_tcpTransport.recvTcp(header + got, 3 - got, 100);
+                ssize_t r = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_tcpMutex);
+                    r = m_tcpTransport.recvTcp(header + got, 3 - got, 100);
+                }
                 if (r > 0) got += r;
+                else if (r < 0) { readErr = true; break; }
             }
-            if (got != 3) continue;
+            if (readErr || got != 3) continue;
 
             uint8_t channel = header[0];
             uint16_t length = (static_cast<uint16_t>(header[1]) << 8) | header[2];
@@ -373,9 +444,15 @@ void RtspClient::streamLoopTcp() {
 
             size_t payloadRead = 0;
             while (payloadRead < length && m_running.load()) {
-                ssize_t r = m_tcpTransport.recvTcp(buffer.data() + payloadRead, length - payloadRead, 100);
+                ssize_t r = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_tcpMutex);
+                    r = m_tcpTransport.recvTcp(buffer.data() + payloadRead, length - payloadRead, 100);
+                }
                 if (r > 0) payloadRead += r;
+                else if (r < 0) { readErr = true; break; }
             }
+            if (readErr) continue;
 
             if (payloadRead == length && channel == 0) {
                 // Video RTP packet
