@@ -159,24 +159,6 @@ adb shell am start -n com.kenny.lazyplayer/com.kenny.lazyplayer.MainActivity
 
 ---
 
-## ⚖️ Open Source Licensing Analysis
-
-For an open-source reference implementation and benchmarking utility like Lazy RTSP Player, choosing the right license involves balancing **intellectual property protection** against **adoption by the engineering community**:
-
-| License | Copyleft Strength | Commercial Reuse | Modification Disclosure | Recommendation for This Project |
-| :--- | :--- | :--- | :--- | :--- |
-| **GPL v3** | Strong | Restrictive | Mandatory (Whole App) | **Protects against closed-source cloning**, but prevents drone/robotics companies from adopting the low-latency pipeline in their proprietary apps. |
-| **LGPL v3** | Weak (Library-level) | Permissive (Dynamic link) | Mandatory for Core Library only | **Ideal compromise**: Core C++ streaming engine remains open, while users can link it into commercial proprietary tools (same model as FFmpeg). |
-| **MIT** | None (Permissive) | Completely unrestricted | None (Attribution only) | **Maximizes adoption and citations**; makes this project the de-facto industry standard reference player, but allows proprietary appropriation without contribution. |
-| **Dual Licensing** | Hybrid | Flexible | Depends on license tier | Free under GPLv3 for open-source / hobbyists; commercial license for proprietary integrators. |
-
-> **Recommended Decision**:
-> - If your primary goal is to **maximize developer adoption and establish a widespread reference standard** for Android low-latency RTSP streaming, choose **MIT** or **Apache 2.0**.
-> - If your priority is to **ensure improvements to the low-latency C++ core are contributed back**, choose **LGPL v3**.
-> - If you want to **strictly prevent third parties from repackaging your work into closed-source commercial apps**, choose **GPL v3** (or Dual Licensing).
-
----
-
 ## 📄 License
 
 This project is licensed under the **[MIT License](./LICENSE)**.
