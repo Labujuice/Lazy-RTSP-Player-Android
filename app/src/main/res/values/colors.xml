@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="osd_background">#66000000</color>
+    <color name="osd_text">#FF00FF66</color>
+    <color name="amber_warning">#CCB45309</color>
+    <color name="amber_text">#FFFFFBEB</color>
+    <color name="control_bar_bg">#99111827</color>
+    <color name="accent_blue">#FF2563EB</color>
+    <color name="accent_green">#FF16A34A</color>
+    <color name="accent_red">#FFDC2626</color>
+</resources>

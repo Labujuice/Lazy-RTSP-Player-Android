@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">UltraLowLatencyPlayer</string>
+    <string name="disconnection_warning">⚠️ Disconnection (Reconnecting...)</string>
+    <string name="connect">Play</string>
+    <string name="stop">Stop</string>
+    <string name="record">Record</string>
+    <string name="stop_record">Stop Rec</string>
+    <string name="snapshot">Snapshot</string>
+    <string name="settings">Settings</string>
+    <string name="history">History</string>
+    <string name="default_rtsp_url">rtsp://192.168.1.100:554/live</string>
+</resources>

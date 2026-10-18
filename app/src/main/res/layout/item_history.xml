@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="10dp"
+    android:background="?android:attr/selectableItemBackground"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/tvUrl"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:singleLine="true" />
+
+    <Button
+        android:id="@+id/btnDelete"
+        android:layout_width="wrap_content"
+        android:layout_height="32dp"
+        android:text="Delete"
+        android:textSize="11sp"
+        android:textColor="@color/white"
+        android:backgroundTint="#FFEF4444"
+        android:focusable="true" />
+
+</LinearLayout>

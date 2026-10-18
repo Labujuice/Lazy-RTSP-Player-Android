@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="#FF1F2937">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pipeline &amp; Transport Settings"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="2x2 Pipeline Matrix:"
+        android:textColor="#FF9CA3AF"
+        android:textSize="14sp"
+        android:layout_marginBottom="6dp" />
+
+    <Spinner
+        android:id="@+id/spPipeline"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="#FF374151"
+        android:padding="8dp"
+        android:layout_marginBottom="14dp"
+        android:focusable="true" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Transport Protocol:"
+        android:textColor="#FF9CA3AF"
+        android:textSize="14sp"
+        android:layout_marginBottom="6dp" />
+
+    <Spinner
+        android:id="@+id/spTransport"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="#FF374151"
+        android:padding="8dp"
+        android:layout_marginBottom="14dp"
+        android:focusable="true" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Direct UDP Listening Port:"
+        android:textColor="#FF9CA3AF"
+        android:textSize="14sp"
+        android:layout_marginBottom="6dp" />
+
+    <EditText
+        android:id="@+id/etUdpPort"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:inputType="number"
+        android:hint="5600"
+        android:textColorHint="#FFAAAAAA"
+        android:textColor="@color/white"
+        android:background="#FF374151"
+        android:padding="8dp"
+        android:layout_marginBottom="20dp"
+        android:focusable="true" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <Button
+            android:id="@+id/btnCancelSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Cancel"
+            android:textColor="@color/white"
+            android:backgroundTint="#FF4B5563"
+            android:layout_marginEnd="8dp"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/btnSaveSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Save &amp; Apply"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/accent_blue"
+            android:focusable="true" />
+    </LinearLayout>
+
+</LinearLayout>

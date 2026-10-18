@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="#FF1F2937">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Recent URL History (LRU Max 5)"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <ListView
+        android:id="@+id/lvHistory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:divider="#FF374151"
+        android:dividerHeight="1dp"
+        android:layout_marginBottom="16dp"
+        android:focusable="true" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+
+        <Button
+            android:id="@+id/btnClearHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Clear All"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/accent_red"
+            android:layout_marginEnd="8dp"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/btnCloseHistory"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Close"
+            android:textColor="@color/white"
+            android:backgroundTint="#FF4B5563"
+            android:focusable="true" />
+    </LinearLayout>
+
+</LinearLayout>
