@@ -133,13 +133,13 @@ Requires JDK 17+, Android SDK API 34, and NDK installed:
 
 ### Output APK Locations
 
-- **Release APK**: `app/build/outputs/apk/release/app-release.apk` (Size: ~5.1 MB, Signed)
-- **Debug APK**: `app/build/outputs/apk/debug/app-debug.apk` (Size: ~9.8 MB, Signed)
+- **Release APK**: `app/build/outputs/apk/release/Lazy_RTSP_Player_1.4.0.apk` (Size: ~5.1 MB, Signed)
+- **Debug APK**: `app/build/outputs/apk/debug/Lazy_RTSP_Player_1.4.0_debug.apk` (Size: ~9.2 MB, Signed)
 
 ### Deploy to Test Device
 
 ```bash
-adb install -r app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/Lazy_RTSP_Player_1.4.0.apk
 adb shell am start -n com.kenny.lazyplayer/com.kenny.lazyplayer.MainActivity
 ```
 

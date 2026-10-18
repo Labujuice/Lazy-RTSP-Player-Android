@@ -59,9 +59,14 @@ android {
         }
 
         applicationVariants.all {
+            val variantName = buildType.name
             outputs.all {
                 val output = this as BaseVariantOutputImpl
-                output.outputFileName = "app-${buildType.name}.apk"
+                output.outputFileName = if (variantName == "release") {
+                    "Lazy_RTSP_Player_${currentVersion}.apk"
+                } else {
+                    "Lazy_RTSP_Player_${currentVersion}_${variantName}.apk"
+                }
             }
         }
     }

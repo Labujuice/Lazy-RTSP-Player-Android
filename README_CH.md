@@ -133,13 +133,13 @@ docker run --rm \
 
 ### 產出 APK 路徑
 
-- **Release APK**：`app/build/outputs/apk/release/app-release.apk`（大小約 5.1 MB，已簽署）
-- **Debug APK**：`app/build/outputs/apk/debug/app-debug.apk`（大小約 9.8 MB，已簽署）
+- **Release APK**：`app/build/outputs/apk/release/Lazy_RTSP_Player_1.4.0.apk`（大小約 5.1 MB，已簽署）
+- **Debug APK**：`app/build/outputs/apk/debug/Lazy_RTSP_Player_1.4.0_debug.apk`（大小約 9.2 MB，已簽署）
 
 ### 安裝與部署至測試裝置
 
 ```bash
-adb install -r app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/Lazy_RTSP_Player_1.4.0.apk
 adb shell am start -n com.kenny.lazyplayer/com.kenny.lazyplayer.MainActivity
 ```
 
