@@ -179,4 +179,12 @@ For an open-source reference implementation and benchmarking utility like Lazy R
 
 ## 📄 License
 
-This project is currently distributed for reference and testing purposes. Please refer to the [Licensing Analysis](#️-open-source-licensing-analysis) section for adoption terms.
+This project is licensed under the **[MIT License](./LICENSE)**.
+
+```
+MIT License
+Copyright (c) 2026 Kenny (Labujuice)
+```
+
+You are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software without restriction, provided that the copyright notice and this permission notice are included in all copies or substantial portions of the Software. See the [LICENSE](./LICENSE) file for complete details.
+

@@ -179,4 +179,12 @@ adb shell am start -n com.kenny.lazyplayer/com.kenny.lazyplayer.MainActivity
 
 ## 📄 專案授權聲明
 
-本專案目前發布供測試與技術參考之用。詳細授權條款評估請參閱 [開源授權模式分析與抉擇](#️-開源授權模式分析與抉擇) 章節。
+本專案採用 **[MIT License (麻省理工學院開源授權條款)](./LICENSE)** 釋出。
+
+```
+MIT License
+Copyright (c) 2026 Kenny (Labujuice)
+```
+
+任何人皆可免費且無限制地使用、複製、修改、合併、發布、分發、再授權及/或販售此軟體及其副本，唯一條件為必須在軟體的所有副本或重要部分中包含上述版權聲明與本許可聲明。完整條款請參閱 [LICENSE](./LICENSE) 文件。
+
